@@ -1,11 +1,7 @@
 language: go
 go:
 - 1.13.x
-install:
-- go get gopkg.in/alecthomas/gometalinter.v1
 script:
-- gometalinter.v1 --vendor --disable-all --enable=vet --enable=ineffassign
-  --enable=goconst --tests ./...
 - go test -v -race ./...
 
 before_script:
