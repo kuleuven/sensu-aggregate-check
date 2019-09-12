@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+    "crypto/tls"
+    "crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
+    "strings"
 
 	"github.com/sensu/sensu-go/types"
 	"github.com/spf13/cobra"
@@ -17,10 +19,12 @@ var (
 	checkLabels  string
 	entityLabels string
 	namespaces   string
+    apiProto     string
 	apiHost      string
 	apiPort      string
 	apiUser      string
 	apiPass      string
+    caPath       string
 	warnPercent  int
 	critPercent  int
 	warnCount    int
@@ -76,6 +80,12 @@ func configureRootCommand() *cobra.Command {
 		"default",
 		"Comma-delimited list of Sensu Go Namespaces to query for Events (e.g. 'us-east-1,us-west-2')")
 
+    cmd.Flags().StringVarP(&apiProto,
+        "api-proto",
+        "",
+        "http",
+        "Sensu Go Backend API Protocol (e.g. 'https')")
+
 	cmd.Flags().StringVarP(&apiHost,
 		"api-host",
 		"H",
@@ -99,6 +109,12 @@ func configureRootCommand() *cobra.Command {
 		"P",
 		"P@ssw0rd!",
 		"Sensu Go Backend API User")
+
+    cmd.Flags().StringVarP(&caPath,
+        "ca-path",
+        "",
+        "",
+        "Path to CA certificate")
 
 	cmd.Flags().IntVarP(&warnPercent,
 		"warn-percent",
@@ -135,14 +151,37 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid argument(s) received")
 	}
 
+    if caPath != "" {
+        err := initCa(caPath)
+        if err != nil {
+            return err
+        }
+    }
+
 	return evalAggregate()
+}
+
+func initCa(caPath string) error {
+   certs := x509.NewCertPool()
+   pemData, err := ioutil.ReadFile(caPath)
+    if err != nil {
+       return err
+   }
+   certs.AppendCertsFromPEM(pemData)
+
+   newTlsConfig := &tls.Config{}
+   newTlsConfig.RootCAs = certs
+
+   defaultTransport := http.DefaultTransport.(*http.Transport)
+   defaultTransport.TLSClientConfig = newTlsConfig
+   return nil
 }
 
 func authenticate() (Auth, error) {
 	var auth Auth
 	req, err := http.NewRequest(
 		"GET",
-		fmt.Sprintf("http://%s:%s/auth", apiHost, apiPort),
+		fmt.Sprintf("%s://%s:%s/auth", apiProto, apiHost, apiPort),
 		nil,
 	)
 	if err != nil {
@@ -216,7 +255,7 @@ func filterEvents(events []*types.Event) []*types.Event {
 }
 
 func getEvents(auth Auth, namespace string) ([]*types.Event, error) {
-	url := fmt.Sprintf("http://%s:%s/api/core/v2/namespaces/%s/events", apiHost, apiPort, namespace)
+	url := fmt.Sprintf("%s://%s:%s/api/core/v2/namespaces/%s/events", apiProto, apiHost, apiPort, namespace)
 	events := []*types.Event{}
 
 	req, err := http.NewRequest("GET", url, nil)
