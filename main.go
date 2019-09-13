@@ -300,7 +300,8 @@ func evalAggregate() error {
 		selected, err := getEvents(auth, namespace)
 
 		if err != nil {
-			return err
+			fmt.Printf("UNKNOWN: %s\n", err.Error())
+			os.Exit(3)
 		}
 
 		for _, event := range selected {
